@@ -1,0 +1,186 @@
+---
+title: "R+Python Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(multidplyr)
+library(frs)
+library(fitdistrplus)
+library(knitr)
+library(readxl)
+library(kableExtra)
+library(clipr)
+```
+
+```{python}
+import numpy as np
+import pandas as pd
+
+def data_processing_func(data):
+  cols = [*data.columns]
+  group_cols = [x for x in cols if 'Selected Choice' in x]
+  group_cols_main_ques = [x.split(' - Selected Choice')[0] for x in group_cols]
+  group_cols_uniq_main_ques = np.unique(group_cols_main_ques)
+
+  def group_cols_func(x):
+    answer_list = []
+    for col in x.keys():
+      if(pd.isnull(x[col]) == False):
+        answer_list.append(x[col])
+  return ' | '.join(answer_list)
+
+  grouped_cols_df = pd.DataFrame()
+  for ques_idx, ques in enumerate(group_cols_uniq_main_ques):
+    ques_group_cols = [x for x in group_cols if x.startswith(ques)]
+    grouped_col_df = data[ques_group_cols].apply(group_cols_func, axis = 1)
+    grouped_cols_df = pd.concat([grouped_cols_df, grouped_col_df], axis = 1)
+  grouped_cols_df.columns = group_cols_uniq_main_ques
+
+  data = data.drop(group_cols, axis = 1)
+  data = pd.concat([data, grouped_cols_df], axis = 1)
+  return data
+
+raw_data = pd.read_csv('./Data/kaggle-survey-2021/kaggle_survey_2021_responses.csv', header = [0], skiprows = [0])
+data = data_processing_func(raw_data)
+data_questions = data.columns
+data.columns = [f'Q_{x}' for x in range(data.shape[1])]
+raw_data['kaggler_id'] = pd.Series(np.arange(raw_data.shape[0]))
+data['kaggler_id'] = pd.Series(np.arange(data.shape[0]))
+
+sel_cols = [x for x in raw_data.columns if 'Which types of specialized hardware do you use on a regular basis?' in x]
+excl_index = pd.isnull(raw_data[sel_cols]).sum(axis = 1)
+excl_index = excl_index[excl_index == 6].index
+
+new_data = data.drop(excl_index, axis = 0)
+
+new_data['has_spec_acc'] = new_data['Q_50'].apply(lambda x: x != 'None')
+new_data['num_spec_acc'] = new_data['Q_50'].apply(lambda x: 0 if x == 'None' else len(x.split('|')))
+
+salary_order = [
+    '$0-999',
+    '1,000-1,999',
+    '2,000-2,999',
+    '3,000-3,999',
+    '4,000-4,999',
+    '5,000-7,499',
+    '7,500-9,999',
+    '10,000-14,999',
+    '15,000-19,999',
+    '20,000-24,999',
+    '25,000-29,999',
+    '30,000-39,999',
+    '40,000-49,999',
+    '50,000-59,999',
+    '60,000-69,999',
+    '70,000-79,999',
+    '80,000-89,999',
+    '90,000-99,999',
+    '100,000-124,999',
+    '125,000-149,999',
+    '150,000-199,999',
+    '200,000-249,999',
+    '250,000-299,999',
+    '300,000-499,999',
+    '$500,000-999,999',
+    '>$1,000,000'
+]
+salaries = new_data['Q_10'].value_counts().loc[salary_order]
+
+starting_points = [0   , 1000, 2000, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 25000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 125000, 150000, 200000, 250000, 300000, 500000, 1000000]
+widths =          [1000, 1000, 1000, 1000, 1000, 2500, 2500,  5000,  5000,  5000,  5000, 10000, 10000, 10000, 10000, 10000, 10000, 10000,  25000,  25000,  50000,  50000,  50000, 200000, 500000, 1000000]
+ending_points = np.add(starting_points, widths)
+mid_points = np.add(starting_points, np.divide(widths, 2))
+
+# LINK: https://www.economist.com/big-mac-index
+# GDP-adjusted
+# Jul 2021
+bigmac_idx = {
+    "India": -18.4,
+    "Indonesia": -26.8,
+    "Pakistan": 16.5,
+    "Mexico": -6.1,
+    "Russia": -34.3,
+    "Turkey": -31.1,
+    "Australia": -8.1,
+    "Nigeria": np.nan,
+    "Greece": 9.2,
+    "Belgium": 9.2,
+    "Japan": -24.4,
+    "Egypt": -14.9,
+    "Singapore": -21.1,
+    "Brazil": 31.5,
+    "Poland": -6.7,
+    "China": -0.4,
+    "Iran, Islamic Republic of...": np.nan,
+    "United States of America": 0,
+    "Italy": 9.2,
+    "Viet Nam": -5.8,
+    "Israel": 6.7,
+    "Peru": -0.7,
+    "South Africa": -29.6,
+    "Other": np.nan,
+    "Spain": 9.2,
+    "Bangladesh": np.nan,
+    "United Kingdom of Great Britain and Northern Ireland": 1.0,
+    "France": 9.2,
+    "Switzerland": 6.5,
+    "Algeria": np.nan,
+    "Tunisia": np.nan,
+    "Argentina": 16.3,
+    "Sweden": 19.8,
+    "Colombia": 3.5,
+    "I do not wish to disclose my location": np.nan,
+    "Canada": 10.2,
+    "Chile": 10.2,
+    "Netherlands": 9.2,
+    "Ukraine": -25.1,
+    "Saudi Arabia": -3.5,
+    "Romania": -29.0,
+    "Morocco": np.nan,
+    "Austria": 9.2,
+    "Taiwan": -38.9,
+    "Kenya": np.nan,
+    "Belarus": np.nan,
+    "Ireland": 9.2,
+    "Portugal": 9.2,
+    "Hong Kong (S.A.R.)": -45.6,
+    "Denmark": -14.2,
+    "Germany": 9.2,
+    "South Korea": -7.8,
+    "Philippines": -11.2,
+    "Sri Lanka": 10.0,
+    "United Arab Emirates": -7.8,
+    "Uganda": np.nan,
+    "Ghana": np.nan,
+    "Malaysia": -31.7,
+    "Thailand": 17.0,
+    "Nepal": np.nan,
+    "Kazakhstan": np.nan,
+    "Ethiopia": np.nan,
+    "Iraq": np.nan,
+    "Ecuador": np.nan,
+    "Norway": 8.6,
+    "Czech Republic": 2.9,
+}
+
+new_ppp_data = new_data.copy()
+new_ppp_data['PPP_adjusted'] = new_data['Q_2'].map(bigmac_idx)
+print(f"Shape: {new_ppp_data.shape}")
+new_ppp_data = new_ppp_data.loc[~pd.isnull(new_ppp_data['PPP_adjusted'])]
+new_ppp_data = new_ppp_data.loc[~pd.isnull(new_ppp_data['Q_10'])]
+
+new_ppp_data['min_sal'] = new_ppp_data['Q_10'].apply(lambda x: starting_points[salary_order.index(x)]) / 1000
+new_ppp_data['mid_sal'] = new_ppp_data['Q_10'].apply(lambda x: mid_points[salary_order.index(x)]) / 1000
+new_ppp_data['max_sal'] = new_ppp_data['Q_10'].apply(lambda x: ending_points[salary_order.index(x)]) / 1000
+new_ppp_data['PPP_adj_min_sal'] = new_ppp_data['min_sal'] * (1 + (new_ppp_data['PPP_adjusted'] / 100.0))
+new_ppp_data['PPP_adj_mid_sal'] = new_ppp_data['mid_sal'] * (1 + (new_ppp_data['PPP_adjusted'] / 100.0))
+new_ppp_data['PPP_adj_max_sal'] = new_ppp_data['max_sal'] * (1 + (new_ppp_data['PPP_adjusted'] / 100.0))
+
+new_ppp_data_only_adj = new_ppp_data[['PPP_adj_min_sal', 'PPP_adj_max_sal']]
+```
+
+```{r}
+print(dim(new_ppp_data_only_adj))
+```

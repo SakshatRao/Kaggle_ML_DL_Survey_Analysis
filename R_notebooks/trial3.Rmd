@@ -1,0 +1,972 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+<div align='center' style="bacground-color: 'blue';">
+    <font size='+3' color='#dd0000'>
+        <b>The SpecAccs Murder Conspiracy!</b>
+    </font>
+    <br>
+    <font size='+2.5' color='#FBAB60'>
+        <b>A Short Data Analytic Comic</b>
+    </font>
+</div>
+
+```{r}
+# Importing R libraries
+
+library(reticulate)
+library(tidyverse)
+library(multidplyr)
+library(fitdistrplus)
+library(knitr)
+library(readxl)
+library(kableExtra)
+library(clipr)
+library(scales)
+#install.packages("ggpubr")
+library(ggpubr)
+library(hrbrthemes)
+library(plotly)
+library(reshape2)
+library(devtools)
+devtools::install_github("ellisp/frs-r-package/pkg")
+library(frs)
+```
+
+```{r}
+python_cmds <- "
+# Importing data processing libraries
+import numpy as np
+import pandas as pd
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+python_cmds <- "
+# Loading datasets
+#   1. Kaggle ML & DL Survey 2021
+#   2. Big Mac Index
+#   3. Graduate Age Dataset
+#   4. GPU Pricing Dataset
+
+# Kaggle ML & DL Survey 2021 Data
+#   Info: 2021
+#   Link: https://www.kaggle.com/c/kaggle-survey-2021/data
+def data_processing_func(data):
+    cols = [*data.columns]
+    group_cols = [x for x in cols if 'Selected Choice' in x]
+    group_cols_main_ques = [x.split(' - Selected Choice')[0] for x in group_cols]
+    group_cols_uniq_main_ques = np.unique(group_cols_main_ques)
+    
+    def group_cols_func(x):
+        answer_list = []
+        for col in x.keys():
+            if(pd.isnull(x[col]) == False):
+                answer_list.append(x[col])
+        return ' | '.join(answer_list)
+
+    grouped_cols_df = pd.DataFrame()
+    for ques_idx, ques in enumerate(group_cols_uniq_main_ques):
+        ques_group_cols = [x for x in group_cols if x.startswith(ques)]
+        grouped_col_df = data[ques_group_cols].apply(group_cols_func, axis = 1)
+        grouped_cols_df = pd.concat([grouped_cols_df, grouped_col_df], axis = 1)
+    grouped_cols_df.columns = group_cols_uniq_main_ques
+    
+    data = data.drop(group_cols, axis = 1)
+    data = pd.concat([data, grouped_cols_df], axis = 1)
+    return data
+raw_data = pd.read_csv('../Data/kaggle-survey-2021/kaggle_survey_2021_responses.csv', header = [0], skiprows = [0])
+data = data_processing_func(raw_data)
+data_questions = data.columns
+data.columns = [f'Q_{x}' for x in range(data.shape[1])]
+raw_data['kaggler_id'] = pd.Series(np.arange(raw_data.shape[0]))
+data['kaggler_id'] = pd.Series(np.arange(data.shape[0]))
+
+# Big Mac Index
+#   Info: GDP-adjusted, Jul 2021
+#   Link: https://www.economist.com/big-mac-index
+bigmac_idx = {
+    'India': -18.4,
+    'Indonesia': -26.8,
+    'Pakistan': 16.5,
+    'Mexico': -6.1,
+    'Russia': -34.3,
+    'Turkey': -31.1,
+    'Australia': -8.1,
+    'Nigeria': np.nan,
+    'Greece': 9.2,
+    'Belgium': 9.2,
+    'Japan': -24.4,
+    'Egypt': -14.9,
+    'Singapore': -21.1,
+    'Brazil': 31.5,
+    'Poland': -6.7,
+    'China': -0.4,
+    'Iran, Islamic Republic of...': np.nan,
+    'United States of America': 0,
+    'Italy': 9.2,
+    'Viet Nam': -5.8,
+    'Israel': 6.7,
+    'Peru': -0.7,
+    'South Africa': -29.6,
+    'Other': np.nan,
+    'Spain': 9.2,
+    'Bangladesh': np.nan,
+    'United Kingdom of Great Britain and Northern Ireland': 1.0,
+    'France': 9.2,
+    'Switzerland': 6.5,
+    'Algeria': np.nan,
+    'Tunisia': np.nan,
+    'Argentina': 16.3,
+    'Sweden': 19.8,
+    'Colombia': 3.5,
+    'I do not wish to disclose my location': np.nan,
+    'Canada': 10.2,
+    'Chile': 10.2,
+    'Netherlands': 9.2,
+    'Ukraine': -25.1,
+    'Saudi Arabia': -3.5,
+    'Romania': -29.0,
+    'Morocco': np.nan,
+    'Austria': 9.2,
+    'Taiwan': -38.9,
+    'Kenya': np.nan,
+    'Belarus': np.nan,
+    'Ireland': 9.2,
+    'Portugal': 9.2,
+    'Hong Kong (S.A.R.)': -45.6,
+    'Denmark': -14.2,
+    'Germany': 9.2,
+    'South Korea': -7.8,
+    'Philippines': -11.2,
+    'Sri Lanka': 10.0,
+    'United Arab Emirates': -7.8,
+    'Uganda': np.nan,
+    'Ghana': np.nan,
+    'Malaysia': -31.7,
+    'Thailand': 17.0,
+    'Nepal': np.nan,
+    'Kazakhstan': np.nan,
+    'Ethiopia': np.nan,
+    'Iraq': np.nan,
+    'Ecuador': np.nan,
+    'Norway': 8.6,
+    'Czech Republic': 2.9,
+}
+
+# Graduate Age Dataset
+#   Info: 2020-21, UG & PG students
+#   Link: https://hea.ie/statistics/data-for-download-and-visualisations/enrolments/key-facts-figures-2020-2021/
+def get_student_age_data():
+    data = pd.read_csv('../Data/student_age.csv')
+    ug_data = data[data['Course'] == 'UG']
+    pg_data = data[data['Course'] == 'PG']
+    pg_data = pg_data.assign(Neg_Composition = -pg_data['Composition'])
+    return ug_data, pg_data
+ug_data, pg_data = get_student_age_data()
+
+# GPU Pricing Dataset
+#   Info: 2018
+#   Link: https://www.kaggle.com/raczeq/ethereum-effect-pc-parts
+def get_gpu_prices():
+    data = pd.read_csv('../Data/gpu_prices/FACT_GPU_PRICE.csv')
+    time_data = pd.read_csv('../Data/gpu_prices/DIM_TIME.csv')
+    prod_data = pd.read_csv('../Data/gpu_prices/DIM_GPU_PROD.csv')
+    region_data = pd.read_csv('../Data/gpu_prices/DIM_REGION.csv')
+    prod_data['Memory_Capacity_category'] = prod_data['Memory_Capacity'].apply(lambda x: 'high' if x >= 10 else 'medium' if x >=2 else 'low')
+    merged_data = pd.merge(data, time_data, how = 'left', left_on = 'TimeId', right_on = 'Id')
+    merged_data = pd.merge(merged_data, prod_data, how = 'left', left_on = 'ProdId', right_on = 'Id')
+    merged_data = pd.merge(merged_data, region_data, how = 'left', left_on = 'RegionId', right_on = 'Id')
+
+    country_code_name_map = {
+        'au': 'Australia',
+        'be': 'Belgium',
+        'ca': 'Canada',
+        'de': 'Germany',
+        'es': 'Spain',
+        'fr': 'France',
+        'ie': 'Ireland',
+        'it': 'Italy',
+        'nz': 'New Zealand',
+        'uk': 'United Kingdom of Great Britain and Northern Ireland',
+        'us': 'United States of America'
+    }
+    merged_data['Code'] = merged_data['Code'].map(country_code_name_map)
+    merged_data = merged_data[merged_data['Code'] != 'New Zealand']
+    merged_data['BigMac_index'] = merged_data['Code'].map(bigmac_idx)
+    merged_data['ppp_price'] = merged_data['Price_USD'] * (1 + (merged_data['BigMac_index'] / 100.0))
+    return merged_data
+gpu_prices_data = get_gpu_prices()
+gpu_prices_data = gpu_prices_data[gpu_prices_data['Year'] == 2018]
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+# Graphing Utils
+
+black <- '#240115'
+light_blue <- '#4cbefd'
+dark_blue <- '#114b5f'
+purple <- '#6457a6'
+green <- '#99ffd1'
+dark_green <- "#3E885B"
+red <- '#dd0000'
+white <- '#fae1df'
+
+basic_plot_dec <- function() {
+  theme(
+    plot.background = element_rect(fill = black),
+    panel.background = element_rect(fill = black),
+    panel.grid.minor = element_line(color = alpha(black, 0)),
+    plot.title = element_text(color = white),
+    plot.subtitle = element_text(color = white),
+    plot.caption = element_text(color = white),
+    axis.title.x = element_text(color = white),
+    axis.title.y = element_text(color = white),
+    axis.text.x = element_text(color = alpha(white, 0.75)),
+    axis.text.y = element_text(color = alpha(white, 0.75))
+  )
+}
+
+basic_color_dec <- function(color) {
+  theme(
+    plot.title = element_text(color = alpha(color, 0.75))
+  )
+}
+
+basic_orient_dec <- function(inv) {
+  if(missing(inv)) inv <- FALSE
+  if(inv) {
+    theme(
+      panel.grid.major.y = element_line(color = alpha(black, 0)),
+      panel.grid.major.x = element_line(color = alpha(white, 0.25)),
+      axis.text.y = element_text(hjust = 1)
+    )
+  }
+  else {
+    theme(
+      panel.grid.major.x = element_line(color = alpha(black, 0)),
+      panel.grid.major.y = element_line(color = alpha(white, 0.25)),
+      axis.text.x = element_text(angle = 90, hjust = 1)
+    )
+  }
+}
+
+fig <- function(width, heigth){
+     options(repr.plot.width = width, repr.plot.height = heigth)
+}
+```
+
+
+```{r}
+python_cmds <- "
+def plot_uniq_vals_in_ques(ques):
+    data = raw_data.set_index('kaggler_id')
+    sel_cols = [x for x in data.columns if ques in x]
+    val_cnts = (data.shape[0] - pd.isnull(data[sel_cols]).sum().sort_index()) / data.shape[0] * 100
+    val_cnts_x = [x.split('Selected Choice - ')[-1] for x in val_cnts.index]
+    val_cnts_y = val_cnts
+    return val_cnts_x, val_cnts_y
+val_x, val_y = plot_uniq_vals_in_ques('Which types of specialized hardware do you use on a regular basis?')
+"
+py_run_string(python_cmds)
+
+val_plot_df <- as.data.frame(list(py$val_x, py$val_y))
+rownames(val_plot_df) <- NULL
+colnames(val_plot_df) <- c('Name', 'Percent')
+
+g <- ggplot(data = val_plot_df, aes(y = Name, x = Percent)) + geom_bar(stat = 'identity', colour = dark_blue, fill = light_blue, alpha = 0.6)
+g <- g + 
+  basic_plot_dec() + 
+  basic_color_dec(light_blue) + 
+  basic_orient_dec(TRUE) + 
+  ggtitle("Usage of Specialized Accelerators") +
+  xlab("Percentage of Kaggler using Spec Acc (%)") +
+  ylab("Spec Acc Type")
+g
+```
+
+```{r}
+python_cmds <- "
+# TODO in R
+# Print details about size of processed dataset & number of excluded columns
+sel_cols = [x for x in raw_data.columns if 'Which types of specialized hardware do you use on a regular basis?' in x]
+excl_index = pd.isnull(raw_data[sel_cols]).sum(axis = 1)
+excl_index = excl_index[excl_index == 6].index
+print(f'No. of Excluded Kagglers: {len(excl_index)}')
+new_data = data.drop(excl_index, axis = 0)
+print(f'Size of processed data: {new_data.shape}')
+new_data['has_spec_acc'] = new_data['Q_50'].apply(lambda x: x != 'None')
+new_data['num_spec_acc'] = new_data['Q_50'].apply(lambda x: 0 if x == 'None' else len(x.split('|')))
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+python_cmds <- "
+salary_order = [
+    '$0-999',
+    '1,000-1,999',
+    '2,000-2,999',
+    '3,000-3,999',
+    '4,000-4,999',
+    '5,000-7,499',
+    '7,500-9,999',
+    '10,000-14,999',
+    '15,000-19,999',
+    '20,000-24,999',
+    '25,000-29,999',
+    '30,000-39,999',
+    '40,000-49,999',
+    '50,000-59,999',
+    '60,000-69,999',
+    '70,000-79,999',
+    '80,000-89,999',
+    '90,000-99,999',
+    '100,000-124,999',
+    '125,000-149,999',
+    '150,000-199,999',
+    '200,000-249,999',
+    '250,000-299,999',
+    '300,000-499,999',
+    '$500,000-999,999',
+    '>$1,000,000'
+]
+salaries = new_data['Q_10'].value_counts().loc[salary_order]
+"
+py_run_string(python_cmds)
+```
+
+
+```{r}
+salary_plot_df <- as.data.frame(list(py$salary_order, py$salaries))
+rownames(salary_plot_df) <- NULL
+colnames(salary_plot_df) <- c("Salary", "Count")
+salary_plot_df$Salary = factor(salary_plot_df$Salary, levels = py$salary_order)
+
+fig(4, 30)
+g1 <- ggplot(data = salary_plot_df, aes(x = Salary, y = Count)) + geom_bar(stat = 'identity', colour = dark_blue, fill = light_blue, alpha = 0.6)
+g1 <- g1 +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "Unequal Bin Widths") +
+  xlab("Salary Bins") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8)
+  )
+g1
+```
+
+```{r}
+python_cmds <- "
+starting_points = [0   , 1000, 2000, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 25000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 125000, 150000, 200000, 250000, 300000, 500000, 1000000]
+widths =          [1000, 1000, 1000, 1000, 1000, 2500, 2500,  5000,  5000,  5000,  5000, 10000, 10000, 10000, 10000, 10000, 10000, 10000,  25000,  25000,  50000,  50000,  50000, 200000, 500000, 1000000]
+ending_points = np.add(starting_points, widths)
+mid_points = np.add(starting_points, np.divide(widths, 2))
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+salary_plot_df <- as.data.frame(list(py$mid_points, py$salaries))
+rownames(salary_plot_df) <- NULL
+colnames(salary_plot_df) <- c("Salary", "Count")
+widths <- py$widths
+
+fig(4, 30)
+g2 <- ggplot(data = salary_plot_df, aes(x = Salary, y = Count)) + geom_bar(stat = 'identity', colour = black, fill = green, alpha = 0.6, width = widths)
+g2 <- g2 +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Salary Distribution", subtitle = "True Distribution", caption = "(Salary limited to $250K)") +
+  xlab("Salary") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8),
+    aspect.ratio = 4/15
+  ) +
+  xlim(0, 250000)
+g2
+```
+
+```{r}
+python_cmds <- "
+new_ppp_data = new_data.copy()
+new_ppp_data['PPP_adjusted'] = new_data['Q_2'].map(bigmac_idx)
+new_ppp_data = new_ppp_data.loc[~pd.isnull(new_ppp_data['PPP_adjusted'])]
+new_ppp_data = new_ppp_data.loc[~pd.isnull(new_ppp_data['Q_10'])]
+print(f'Shape of data after excluding countries for which we do not have PPP data & NAs in Q_10: {new_ppp_data.shape}')
+
+new_ppp_data['min_sal'] = new_ppp_data['Q_10'].apply(lambda x: starting_points[salary_order.index(x)]) / 1000000
+new_ppp_data['mid_sal'] = new_ppp_data['Q_10'].apply(lambda x: mid_points[salary_order.index(x)]) / 1000000
+new_ppp_data['max_sal'] = new_ppp_data['Q_10'].apply(lambda x: ending_points[salary_order.index(x)]) / 1000000
+new_ppp_data['PPP_adj_min_sal'] = new_ppp_data['min_sal'] * (1 + (new_ppp_data['PPP_adjusted'] / 100.0))
+new_ppp_data['PPP_adj_mid_sal'] = new_ppp_data['mid_sal'] * (1 + (new_ppp_data['PPP_adjusted'] / 100.0))
+new_ppp_data['PPP_adj_max_sal'] = new_ppp_data['max_sal'] * (1 + (new_ppp_data['PPP_adjusted'] / 100.0))
+new_ppp_data_only_adj = new_ppp_data[['PPP_adj_min_sal', 'PPP_adj_max_sal']]
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+colnames(py$new_ppp_data_only_adj) <- c('left', 'right')
+fitted_distribution_gamma <- fitdistcens(py$new_ppp_data_only_adj, "gamma")
+
+# overall fit:
+print("Fitted Parameters:")
+print(fitted_distribution_gamma$estimate)
+
+# Mean
+midpt_mean <- py$new_ppp_data_only_adj %>%
+  mutate(mid = (left + replace_na(right, 2)) / 2) %>%
+  summarise(crude_mean = mean(mid)) %>%
+  pull(crude_mean)
+print(sprintf("Midpoint-based Mean: %f", midpt_mean))
+estim_mean <- fitted_distribution_gamma$estimate["shape"] / fitted_distribution_gamma$estimate["rate"]
+print(sprintf("Etimated Mean: %f", estim_mean))
+
+alpha <- fitted_distribution_gamma$estimate[['shape']]
+beta <- fitted_distribution_gamma$estimate[['rate']]
+
+breaks <- c(0, 0.25, 0.5, 0.75, 1)
+g <- ggplot(py$new_ppp_data_only_adj) + stat_function(fun = dgamma, args = fitted_distribution_gamma$estimate, colour = green) + scale_x_continuous(breaks = breaks, labels = sapply(breaks, function(x) { paste('$', x * 1000000 / 1000, 'K', sep = '') }))
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Fitted Gamma Distribution", subtitle = sprintf("Alpha=%.2f, Beta=%.2f", alpha, beta)) +
+  xlab("Salary") +
+  ylab("Distribution")
+print(g)
+```
+
+```{r}
+python_cmds = "
+ppp_bins = [[*x] for x in [*new_ppp_data.groupby(['PPP_adj_min_sal', 'PPP_adj_max_sal'])['kaggler_id'].aggregate('count').index]]
+ppp_bins = pd.DataFrame(ppp_bins, columns = ['min', 'max'])
+"
+py_run_string(python_cmds)
+
+find_area_mid <- function(min, max, alpha, beta) {
+  f_1 <- pgamma(min, shape = alpha, rate= beta)
+  f_2 <- pgamma(max, shape = alpha, rate = beta)
+  qgamma((f_1 + f_2) / 2.0, shape = alpha, rate = beta)
+}
+
+find_actual_mid <- function(min, max, alpha, beta) {
+  samples <- rgamma(1000000, shape = alpha, rate = beta)
+  actual_mids <- c()
+  for (idx in 1:length(min)) {
+    actual_mids <- c(actual_mids, mean(samples[(samples >= min[idx]) & (samples <= max[idx])]))
+  }
+  actual_mids
+}
+
+py$ppp_bins <- py$ppp_bins %>%
+  mutate(final_mid = find_actual_mid(min, max, alpha, beta))
+
+python_cmds = "
+new_ppp_data = pd.merge(new_ppp_data, ppp_bins, how = 'inner', left_on = ['PPP_adj_min_sal', 'PPP_adj_max_sal'], right_on = ['min', 'max'])
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+fig(8, 30)
+g <- ggplot(data = py$new_ppp_data) +
+  geom_density(aes(x = mid_sal * 1000, colour = "Original"), show.legend = FALSE) +
+  stat_density(aes(x = mid_sal * 1000, colour = "Original"), geom = 'line', position = 'identity') +
+  geom_density(aes(x = final_mid * 1000, colour = "Adjusted"), show.legend = FALSE) +
+  stat_density(aes(x = final_mid * 1000, colour = "Adjusted"), geom = 'line', position = 'identity') +
+  xlim(0, 750)
+g +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Impact of Distribution Fitting", colour = "Distribution Type", caption = "(Limiting salary to $750K)") +
+  xlab("Salary (in 100K$)") +
+  ylab("Density") +
+  theme(
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(green, 0.5)),
+    legend.key = element_rect(fill = alpha(green, 0)),
+    aspect.ratio = 7/15,
+    legend.position = c(0.85, 0.9),
+  ) +
+  scale_colour_manual(values = c("Original" = alpha(light_blue, 0.6), "Adjusted" = alpha(red, 0.6)))
+```
+
+```{r}
+python_cmds = "
+pivot_data = pd.pivot_table(new_data.groupby(['has_spec_acc', 'Q_10'])[['kaggler_id']].aggregate('count'), values = 'kaggler_id', index = ['Q_10'], columns = ['has_spec_acc'])
+for col in pivot_data.columns:
+    pivot_data[col] = pivot_data[col] / pivot_data[col].sum() * 100
+pivot_data = pivot_data.loc[salary_order]
+
+has_no_spec_acc = new_ppp_data[new_ppp_data['has_spec_acc'] == 0]
+has_spec_acc = new_ppp_data[new_ppp_data['has_spec_acc'] == 1]
+has_no_spec_acc_only_adj = has_no_spec_acc[['PPP_adj_min_sal', 'PPP_adj_max_sal']]
+has_spec_acc_only_adj = has_spec_acc[['PPP_adj_min_sal', 'PPP_adj_max_sal']]
+"
+py_run_string(python_cmds)
+
+colnames(py$has_no_spec_acc_only_adj) <- c('left', 'right')
+fitted_distribution_gamma <- fitdistcens(py$has_no_spec_acc_only_adj, "gamma")
+alpha1 <- fitted_distribution_gamma$estimate[['shape']]
+beta1 <- fitted_distribution_gamma$estimate[['rate']]
+
+colnames(py$has_spec_acc_only_adj) <- c('left', 'right')
+fitted_distribution_gamma <- fitdistcens(py$has_spec_acc_only_adj, "gamma")
+alpha2 <- fitted_distribution_gamma$estimate[['shape']]
+beta2 <- fitted_distribution_gamma$estimate[['rate']]
+```
+
+```{r}
+breaks <- c(0, 0.1, 0.2, 0.3, 0.4, 0.5)
+g <- ggplot(py$new_ppp_data_only_adj) +
+  stat_function(fun = dgamma, args = c(shape = alpha1, rate = beta1), aes(colour = "Has no SpecAccs")) +
+  stat_function(fun = dgamma, args = c(shape = alpha2, rate = beta2), aes(colour = "Has SpecAccs")) +
+  scale_x_continuous(breaks = breaks, labels = sapply(breaks, function(x) { x * 1000 }), limits = c(0, 0.5)) +
+  scale_colour_manual(values = c("Has no SpecAccs" = alpha(green, 0.6), "Has SpecAccs" = alpha(red, 0.6)))
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "SpecAccs Usage vs. Salary", colour = "SpecAccs Usage") +
+  xlab("Salary") +
+  ylab("Distribution") +
+  theme(
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(light_blue, 0.5)),
+    legend.key = element_rect(fill = alpha(light_blue, 0)),
+    legend.position = c(0.85, 0.9),
+  )
+print(g)
+```
+
+```{r}
+python_cmds = "
+has_no_spec_acc_salaries = has_no_spec_acc['Q_10'].value_counts().loc[salary_order]
+has_no_spec_acc_salaries_x_vals = has_no_spec_acc_salaries.values / has_no_spec_acc_salaries.values.sum() * 100
+has_spec_acc_salaries = has_spec_acc['Q_10'].value_counts().loc[salary_order]
+has_spec_acc_salaries_x_vals = has_spec_acc_salaries.values / has_spec_acc_salaries.values.sum() * 100
+diff = has_spec_acc_salaries_x_vals - has_no_spec_acc_salaries_x_vals
+"
+py_run_string(python_cmds)
+
+spec_acc_salaries_plot_df <- as.data.frame(list(py$mid_points, py$has_spec_acc_salaries_x_vals, py$has_no_spec_acc_salaries_x_vals))
+rownames(spec_acc_salaries_plot_df) <- NULL
+colnames(spec_acc_salaries_plot_df) <- c("Salary", "HasSpecAccsCount", "HasNoSpecAccsCount")
+widths <- py$widths
+
+fig(4, 30)
+g <- ggplot(data = spec_acc_salaries_plot_df, aes(x = Salary)) +
+  geom_bar(aes(y = HasSpecAccsCount, fill = 'HasSpecAccs'), stat = 'identity', alpha = 0.5, width = widths) +
+  geom_bar(aes(y = HasNoSpecAccsCount, fill = 'HasNoSpecAccs'), stat = 'identity', alpha = 0.5, width = widths) +
+  scale_fill_manual(values = c("HasSpecAccs" = alpha(light_blue, 0.6), "HasNoSpecAccs" = alpha(red, 0.6)))
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Salary Distribution", subtitle = "True Distribution", caption = "(Salary limited to $250K)", fill = "SpecAccs Usage") +
+  xlab("Salary") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8),
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(green, 0.5)),
+    legend.key = element_rect(fill = alpha(green, 0)),
+    legend.position = c(0.85, 0.9),
+  )
+print(g)
+
+spec_acc_salaries_plot_df <- as.data.frame(list(py$mid_points, py$diff, py$salary_order))
+rownames(spec_acc_salaries_plot_df) <- NULL
+colnames(spec_acc_salaries_plot_df) <- c("Salary", "Diff", "Bins")
+spec_acc_salaries_plot_df$Bins <- factor(spec_acc_salaries_plot_df$Bins, levels = py$salary_order)
+widths <- py$widths
+
+fig(4, 30)
+g <- ggplot(data = spec_acc_salaries_plot_df, aes(x = Salary)) +
+  geom_bar(aes(y = Diff), stat = 'identity', fill = green, alpha = 0.5, width = widths)
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Salary Distribution", subtitle = "True Distribution", caption = "(Salary limited to $250K)") +
+  xlab("Salary") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8),
+  )
+print(g)
+
+fig(4, 30)
+g <- ggplot(data = spec_acc_salaries_plot_df, aes(x = Bins)) +
+  geom_bar(aes(y = Diff), stat = 'identity', colour = dark_blue, fill = light_blue, alpha = 0.5)
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "Salary Distribution", subtitle = "True Distribution", caption = "(Salary limited to $250K)") +
+  xlab("Salary") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8),
+  )
+print(g)
+
+python_cmds = "
+new_ppp_data['PPP_adj_sal_cats'] = new_ppp_data['final_mid'].apply(lambda x: 0 if (x * 1000000 < 5000) else 2 if (x * 1000000 > 175000) else 1)
+new_ppp_data['PPP_adj_sal_cats'] = new_ppp_data['PPP_adj_sal_cats'].replace({0: '<$5000', 1: '$5000-$175000', 2: '>$175000'})
+cat_avg_table = new_ppp_data.groupby('PPP_adj_sal_cats')['has_spec_acc'].aggregate([np.nanmean, 'count']).reset_index(drop = False)
+cat_avg_table['nanmean'] = cat_avg_table['nanmean'].apply(lambda x: np.round(x * 1000) / 1000)
+"
+py_run_string(python_cmds)
+
+g <- ggtexttable(py$cat_avg_table, rows = NULL, cols = c("Salary\nCategory", "% Having\nSpecAccs", "Count"), theme = ttheme('mBlue'))
+g <- table_cell_font(g, row = 2, column = 2, face = 'bold')
+g <- table_cell_font(g, row = 3, column = 2, face = 'bold')
+g <- table_cell_font(g, row = 4, column = 2, face = 'bold')
+print(g)
+```
+
+```{r}
+python_cmds = "
+new_ppp_data['PPP_adj_sal_cats'] = new_ppp_data['PPP_adj_mid_sal'].apply(lambda x: 1 if ((x * 1000000 < 5000) | (x * 1000000 > 175000)) else 0)
+val = new_ppp_data.groupby('PPP_adj_sal_cats')['has_spec_acc'].aggregate(['count', np.nanmean])
+new_ppp_data_only_adj = new_ppp_data[['PPP_adj_sal_cats', 'has_spec_acc']]
+new_ppp_data_only_adj['PPP_adj_sal_cats'] = new_ppp_data_only_adj['PPP_adj_sal_cats'].astype(np.int32)
+new_ppp_data_only_adj['has_spec_acc'] = new_ppp_data_only_adj['has_spec_acc'].astype(np.int32)
+"
+py_run_string(python_cmds)
+
+ttest <- t.test(has_spec_acc ~ PPP_adj_sal_cats, data = py$new_ppp_data_only_adj)
+g <- ggparagraph(sprintf("Simple p-tests showed that SpecAccs usage for Kagglers in the extreme salary ranges was higher than for Kagglers in the non-extreme salary ranges, with the difference in usage being statistically significant (pval = %.2f)", ttest$p.value))
+print(g)
+```
+
+```{r}
+python_cmds = "
+age_order = [
+    '18-21',
+    '22-24',
+    '25-29',
+    '30-34',
+    '35-39',
+    '40-44',
+    '45-49',
+    '50-54',
+    '55-59',
+    '60-69',
+    '70+',
+]
+ages = new_data['Q_1'].value_counts().loc[age_order]
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+age_plot_df <- as.data.frame(list(py$age_order, py$ages))
+rownames(age_plot_df) <- NULL
+colnames(age_plot_df) <- c("Age", "Count")
+age_plot_df$Age = factor(age_plot_df$Age, levels = py$age_order)
+
+fig(4, 30)
+g1 <- ggplot(data = age_plot_df, aes(x = Age, y = Count)) + geom_bar(stat = 'identity', colour = dark_blue, fill = light_blue, alpha = 0.6)
+g1 <- g1 +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "Unequal Bin Widths") +
+  xlab("Age Bins") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8),
+  )
+g1
+```
+
+```{r}
+python_cmds = "
+starting_points = [18, 22, 25, 30, 35, 40, 45, 50, 55, 60, 70]
+widths =          [4 , 3 , 5 , 5 , 5 , 5 , 5 , 5 , 5 , 10, 10]
+ending_points = np.add(starting_points, widths)
+mid_points = np.add(starting_points, np.divide(widths, 2))
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+age_plot_df <- as.data.frame(list(py$mid_points, py$ages))
+rownames(age_plot_df) <- NULL
+colnames(age_plot_df) <- c("Age", "Count")
+widths <- py$widths
+
+fig(4, 30)
+g2 <- ggplot(data = age_plot_df, aes(x = Age, y = Count)) + geom_bar(stat = 'identity', colour = black, fill = green, alpha = 0.6, width = widths)
+g2 <- g2 +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Age Distribution", subtitle = "True Distribution", caption = "(Age limited to $250K)") +
+  xlab("Age") +
+  ylab("Count") +
+  theme(
+    axis.text.x = element_text(size = 8)
+  )
+g2
+```
+
+```{r}
+python_cmds = "
+new_age_data = new_data.copy()
+new_age_data['min_age'] = (new_age_data['Q_1'].apply(lambda x: starting_points[age_order.index(x)]) - 18) / 100
+new_age_data['mid_age'] = (new_age_data['Q_1'].apply(lambda x: mid_points[age_order.index(x)]) - 18) / 100
+new_age_data['max_age'] = (new_age_data['Q_1'].apply(lambda x: ending_points[age_order.index(x)]) - 18) / 100
+new_age_data_only_adj = new_age_data[['min_age', 'max_age']]
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+colnames(py$new_age_data_only_adj) <- c('left', 'right')
+fitted_distribution_gamma <- fitdistcens(py$new_age_data_only_adj, "gamma")
+
+alpha <- fitted_distribution_gamma$estimate[['shape']]
+beta <- fitted_distribution_gamma$estimate[['rate']]
+```
+
+```{r}
+python_cmds = "
+age_bins = [[*x] for x in [*new_age_data.groupby(['min_age', 'max_age'])['kaggler_id'].aggregate('count').index]]
+age_bins = pd.DataFrame(age_bins, columns = ['min', 'max'])
+"
+py_run_string(python_cmds)
+
+find_actual_mid <- function(min, max, alpha, beta) {
+  samples <- rgamma(1000000, shape = alpha, rate = beta)
+  actual_mids <- c()
+  for (idx in 1:length(min)) {
+    actual_mids <- c(actual_mids, mean(samples[(samples >= min[idx]) & (samples <= max[idx])]))
+  }
+  actual_mids
+}
+
+py$age_bins <- py$age_bins %>%
+  mutate(final_mid = find_actual_mid(min, max, alpha, beta))
+
+python_cmds = "
+new_age_data = pd.merge(new_age_data, age_bins, how = 'inner', left_on = ['min_age', 'max_age'], right_on = ['min', 'max'])
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+python_cmds = "
+new_age_ppp_data = pd.merge(new_ppp_data[['kaggler_id', 'final_mid']], new_age_data[['kaggler_id', 'final_mid']], how = 'inner', on = 'kaggler_id', suffixes = ['_salary', '_age'])
+"
+py_run_string(python_cmds)
+
+#py$new_age_ppp_data$final_mid_salary <- as.numeric(py$new_age_ppp_data$final_mid_salary)
+#py$new_age_ppp_data$final_mid_age <- as.numeric(py$new_age_ppp_data$final_mid_age)
+g <- ggplot(data = py$new_age_ppp_data, aes(x = final_mid_salary * 1000000, y = final_mid_age * 100 + 18)) +
+  stat_density2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_x_log10() +
+  scale_fill_gradient(low = black, high = light_blue)
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "Salary-Age Density Plot", subtitle = "Understanding the relationship between Age & Salary", caption = "(Salary is in logarithmic scale for visualization)", fill = "Density") +
+  xlab("Salary") +
+  ylab("Age") +
+  theme(
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(light_blue, 0)),
+    legend.key = element_rect(fill = alpha(light_blue, 0)),
+    legend.position = c(0.95, 0.6),
+    legend.key.height = unit(1.5, "cm"),
+    panel.grid.major.y = element_line(color = alpha(black, 0)),
+  )
+g
+```
+
+```{r}
+python_cmds = "
+new_age_ppp_data['final_mid_salary_cats'] = new_age_ppp_data['final_mid_salary'].apply(lambda x: 'low' if x * 1000000 < 5000 else 'high' if x * 1000000 > 175000 else 'medium')
+"
+py_run_string(python_cmds)
+
+py$new_age_ppp_data$final_mid_salary_cats <- factor(py$new_age_ppp_data$final_mid_salary_cats, levels = c('low', 'medium', 'high'))
+g <- ggplot(data = py$new_age_ppp_data) + geom_boxplot(aes(x = final_mid_salary_cats, y = final_mid_age * 100 + 18), colour = alpha(dark_green, 1), fill = alpha(green, 0.7), outlier.color = green, outlier.alpha = 0.01)
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(green) +
+  basic_orient_dec() +
+  labs(title = "Age for different Salary Categories") +
+  xlab("Salary Categories") +
+  ylab("Age") +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  )
+g
+```
+
+```{r}
+py$ug_data$Age <- factor(py$ug_data$Age, levels = c("<20", "20-23", "24-29", "30-39", "40-49", ">=50"))
+py$pg_data$Age <- factor(py$pg_data$Age, levels = c("<20", "20-23", "24-29", "30-39", "40-49", ">=50"))
+breaks <- c(-20, 0, 20, 40)
+g <- ggplot() +
+  geom_bar(data = py$ug_data, aes(y = Age, x = Composition), stat = 'identity', colour = white, fill = alpha(light_blue, 0.6)) +
+  geom_bar(data = py$pg_data, aes(y = Age, x = Neg_Composition), stat = 'identity', colour = white, fill = alpha(green, 0.6)) +
+  geom_vline(xintercept = 0, colour = white, size = 2) +
+  scale_x_continuous(breaks = breaks, labels = sapply(breaks, function(x) { abs(x) }))
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(white) +
+  basic_orient_dec(TRUE) +
+  labs(title = "General Student Age Distribution", subtitle = "For undergraduate & postgraduate students") +
+  xlab("Percentage") +
+  ylab("Age")
+g
+```
+
+```{r}
+python_cmds = "
+new_ppp_cats_data = pd.merge(new_ppp_data, new_age_ppp_data, how = 'left', on = 'kaggler_id')
+"
+py_run_string(python_cmds)
+```
+
+```{r}
+python_cmds = "
+coding_exp_order = ['< 1 years', '1-3 years', '3-5 years', '5-10 years', '10-20 years', '20+ years']
+coding_exp = pd.pivot_table(new_ppp_cats_data.groupby(['final_mid_salary_cats', 'Q_4'])['kaggler_id'].aggregate('count').reset_index(drop = False), index = 'final_mid_salary_cats', columns = 'Q_4')['kaggler_id'][coding_exp_order].loc[['low', 'medium', 'high']]
+coding_exp_plot_df = coding_exp / np.repeat(coding_exp.sum(axis = 1).values, repeats = 6).reshape((3, 6)) * 100
+"
+py_run_string(python_cmds)
+
+py$coding_exp_plot_df <- melt(py$coding_exp_plot_df)
+py$coding_exp_plot_df$id <- c('low-salary', 'mid-salary', 'high-salary')
+py$coding_exp_plot_df$id <- factor(py$coding_exp_plot_df$id, levels = c('low-salary', 'mid-salary', 'high-salary'))
+py$coding_exp_plot_df$text <- apply(py$coding_exp_plot_df, 1, function(x) { paste(round(as.numeric(x['value']) * 100) / 100, "% of ", x['id'], " Kagglers have\n", x['variable'], " of coding experience", sep = "") })
+g <- ggplot(data = py$coding_exp_plot_df, aes(x = id, y = variable, fill = value, text = text)) + geom_tile() + theme_ipsum()
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "Coding Experience vs. Salary", subtitle = "Heatmap", fill = "Percentage") +
+  xlab("Salary Category") +
+  ylab("Coding Experience") +
+  theme(
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(light_blue, 0)),
+    legend.key = element_rect(fill = alpha(light_blue, 0)),
+    legend.position = c(0.95, 0.6),
+    legend.key.height = unit(1.5, "cm"),
+    axis.text.x = element_text(angle = 0)
+  )
+g <- ggplotly(g, tooltip="text")
+g
+```
+
+```{r}
+python_cmds = "
+new_ppp_cats_data['Q_6'] = new_ppp_cats_data['Q_6'].map({
+    '5-10 years': '5-10',
+    '20 or more years': '20+',
+    '3-4 years': '3-4',
+    '4-5 years': '4-5',
+    'I do not use machine learning methods': '<1',
+    'Under 1 year': '<1',
+    '2-3 years': '2-3',
+    '1-2 years': '1-2',
+    '10-20 years': '10-20',
+})
+
+ml_exp_order = ['<1', '1-2', '2-3', '3-4', '4-5', '5-10', '10-20', '20+']
+ml_exp = pd.pivot_table(new_ppp_cats_data.groupby(['final_mid_salary_cats', 'Q_6'])['kaggler_id'].aggregate('count').reset_index(drop = False), index = 'final_mid_salary_cats', columns = 'Q_6')['kaggler_id'][ml_exp_order].loc[['low', 'medium', 'high']]
+ml_exp_plot_df = ml_exp / np.repeat(ml_exp.sum(axis = 1).values, repeats = 8).reshape((3, 8)) * 100
+"
+py_run_string(python_cmds)
+
+py$ml_exp_plot_df <- melt(py$ml_exp_plot_df)
+py$ml_exp_plot_df$id <- c('low-salary', 'mid-salary', 'high-salary')
+py$ml_exp_plot_df$id <- factor(py$ml_exp_plot_df$id, levels = c('low-salary', 'mid-salary', 'high-salary'))
+py$ml_exp_plot_df$text <- apply(py$ml_exp_plot_df, 1, function(x) { paste(round(as.numeric(x['value']) * 100) / 100, "% of ", x['id'], " Kagglers have\n", x['variable'], " of ML experience", sep = "") })
+g <- ggplot(data = py$ml_exp_plot_df, aes(x = id, y = variable, fill = value, text = text)) + geom_tile() + theme_ipsum()
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "ML Experience vs. Salary", subtitle = "Heatmap", fill = "Percentage") +
+  xlab("Salary Category") +
+  ylab("ML Experience") +
+  theme(
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(light_blue, 0)),
+    legend.key = element_rect(fill = alpha(light_blue, 0)),
+    legend.position = c(0.95, 0.6),
+    legend.key.height = unit(1.5, "cm"),
+    axis.text.x = element_text(angle = 0)
+  )
+g <- ggplotly(g, tooltip="text")
+g
+```
+
+```{r}
+python_cmds = "
+new_ppp_cats_data['Q_11'] = new_ppp_cats_data['Q_11'].map({
+    '$100-$999': '100-999',
+    '$10,000-$99,999': '10000-99999',
+    '$1000-$9,999': '1000-9999',
+    '$0 ($USD)': '0',
+    '$1-$99': '1-99',
+    '$100,000 or more ($USD)': '>100000'
+})
+money_spent_order = ['0', '1-99', '100-999', '1000-9999', '10000-99999', '>100000']
+money_spent = pd.pivot_table(new_ppp_cats_data.groupby(['final_mid_salary_cats', 'Q_11'])['kaggler_id'].aggregate('count').reset_index(drop = False), index = 'final_mid_salary_cats', columns = 'Q_11')['kaggler_id'][money_spent_order].loc[['low', 'medium', 'high']]
+money_spent_plot_df = money_spent / np.repeat(money_spent.sum(axis = 1).values, repeats = 6).reshape((3, 6)) * 100
+"
+py_run_string(python_cmds)
+
+py$money_spent_plot_df <- melt(py$money_spent_plot_df)
+py$money_spent_plot_df$id <- c('low-salary', 'mid-salary', 'high-salary')
+py$money_spent_plot_df$id <- factor(py$money_spent_plot_df$id, levels = c('low-salary', 'mid-salary', 'high-salary'))
+py$money_spent_plot_df$text <- apply(py$money_spent_plot_df, 1, function(x) { paste(round(as.numeric(x['value']) * 100) / 100, "% of ", x['id'], " Kagglers have\nspent $", x['variable'], " on ML services", sep = "") })
+g <- ggplot(data = py$money_spent_plot_df, aes(x = id, y = variable, fill = value, text = text)) + geom_tile() + theme_ipsum()
+g <- g +
+  basic_plot_dec() +
+  basic_color_dec(light_blue) +
+  basic_orient_dec() +
+  labs(title = "Money Spent on ML services vs. Salary", subtitle = "Heatmap", fill = "Percentage") +
+  xlab("Salary Category") +
+  ylab("Money Spent") +
+  theme(
+    legend.title = element_text(colour = white, face = 'bold'),
+    legend.text = element_text(colour = white),
+    legend.background = element_rect(fill = alpha(light_blue, 0)),
+    legend.key = element_rect(fill = alpha(light_blue, 0)),
+    legend.position = c(0.95, 0.6),
+    legend.key.height = unit(1.5, "cm"),
+    axis.text.x = element_text(angle = 0),
+    plot.subtitle = element_text(colour = white)
+  )
+g <- ggplotly(g, tooltip="text")
+g
+```
+
