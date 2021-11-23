@@ -1238,7 +1238,7 @@ print(c(low_salary_kaggler_afford_years, mid_salary_kaggler_afford_months, high_
 ```{r}
 library(png)
 library(grid)
-img <- readPNG("../gpu_afford.png")
+img <- readPNG("https://github.com/SakshatRao/Kaggle_ML_DL_Survey_Analysis/blob/main/gpu_afford.png?raw=true")
 g <- rasterGrob(img, interpolate=TRUE)
 
 fig(10, 10)
