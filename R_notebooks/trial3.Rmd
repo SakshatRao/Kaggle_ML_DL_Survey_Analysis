@@ -841,14 +841,14 @@ py_run_string(python_cmds)
 ```
 
 ```{r}
-python_cmds = "
+python_cmds <- "
 coding_exp_order = ['< 1 years', '1-3 years', '3-5 years', '5-10 years', '10-20 years', '20+ years']
 coding_exp = pd.pivot_table(new_ppp_cats_data.groupby(['final_mid_salary_cats', 'Q_4'])['kaggler_id'].aggregate('count').reset_index(drop = False), index = 'final_mid_salary_cats', columns = 'Q_4')['kaggler_id'][coding_exp_order].loc[['low', 'medium', 'high']]
 coding_exp_plot_df = coding_exp / np.repeat(coding_exp.sum(axis = 1).values, repeats = 6).reshape((3, 6)) * 100
 "
 py_run_string(python_cmds)
 
-py$coding_exp_plot_df <- melt(py$coding_exp_plot_df)
+py$coding_exp_plot_df <- melt(py$coding_exp_plot_df, measure.vars = colnames(py$coding_exp_plot_df))
 py$coding_exp_plot_df$id <- c('low-salary', 'mid-salary', 'high-salary')
 py$coding_exp_plot_df$id <- factor(py$coding_exp_plot_df$id, levels = c('low-salary', 'mid-salary', 'high-salary'))
 py$coding_exp_plot_df$text <- apply(py$coding_exp_plot_df, 1, function(x) { paste(round(as.numeric(x['value']) * 100) / 100, "% of ", x['id'], " Kagglers have\n", x['variable'], " of coding experience", sep = "") })
@@ -1238,7 +1238,7 @@ print(c(low_salary_kaggler_afford_years, mid_salary_kaggler_afford_months, high_
 ```{r}
 library(png)
 library(grid)
-img <- readPNG("https://github.com/SakshatRao/Kaggle_ML_DL_Survey_Analysis/blob/main/gpu_afford.png?raw=true")
+img <- readPNG("../gpu_afford.png")
 g <- rasterGrob(img, interpolate=TRUE)
 
 fig(10, 10)
